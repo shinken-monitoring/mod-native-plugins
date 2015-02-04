@@ -1,6 +1,7 @@
 
 import logging
 import shlex
+import time
 
 from Queue import Empty, Queue
 
@@ -39,6 +40,7 @@ class NativePlugins(BaseModule):
         cmd_items = shlex.split(check.command)
         try:
             plugin = self.get_plugin(cmd_items[0])
+            check.check_time = time.time()
             res = plugin.execute(cmd_items[1:])
             self.logger.debug('%s : res=%s', check.command, res)
         except Exception as err:
@@ -51,6 +53,7 @@ class NativePlugins(BaseModule):
             check.exit_status = res.return_code
             check.output = res.output
             check.perf_data = '|'.join(map(str, res.perf_datas))
+        check.execution_time = time.time() - check.check_time
         check.status = 'done'
         self.out_queue.put(check)
 
