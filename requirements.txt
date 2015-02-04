@@ -1,0 +1,2 @@
+shinkenplugins>=0.2.0
+shinken>=2.2
