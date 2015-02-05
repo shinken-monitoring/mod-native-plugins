@@ -1,5 +1,9 @@
+'''
+Shinken Native-Plugin Module.
+'''
 
-from .native_plugins import NativePlugins
+
+from .native_plugins import NativePluginsModule
 
 
 properties = {
@@ -10,6 +14,5 @@ properties = {
 }
 
 
-
 def get_instance(mod_conf):
-    return NativePlugins(mod_conf)
+    return NativePluginsModule(mod_conf)
