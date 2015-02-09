@@ -190,9 +190,11 @@ class NativePluginsModule(BaseModule):
                     thread = ctx.thread
                     if thread.isAlive():
                         pass
-                        # TODO: should we verify that the thread isn't executing a check for too long ?
+                        # TODO:
+                        # should we verify that the thread isn't executing a check for too long ?
                         # but then if yes : what to do if the check is in that case ??
-                        # because even in Python a thread can't necessarily always be safely cancelled..
+                        # Because even in Python a thread can't necessarily always be safely
+                        # cancelled..
                     else:
                         if self.interrupted:
                             return
