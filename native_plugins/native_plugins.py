@@ -202,4 +202,10 @@ class NativePluginsModule(BaseModule):
                 self.add_new_thread()
 
 
-
+    def do_stop(self):
+        self.interrupted = True  # just to make sure, otherwise we could wait forever on our threads
+        self.logger.debug('Waiting on my threads..')
+        for ctx in self.threads.values():
+            ctx.thread.join()
+        self.logger.info('all threads joined.')
+        super(NativePluginsModule, self).do_stop()
