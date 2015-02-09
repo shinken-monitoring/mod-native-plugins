@@ -30,6 +30,7 @@ class PluginCtx(object):
 
 class NativePluginsModule(BaseModule):
 
+
     def get_worker_threads(self, mod_conf, default=4):
         try:
             if hasattr(mod_conf, 'worker_threads'):
@@ -177,13 +178,14 @@ class NativePluginsModule(BaseModule):
 
         check_threads_every = 5
         # make sure to directly create the threads:
-        next_check_threads = time.time() - 2*check_threads_every
+        next_check_threads = 0
 
         while not self.interrupted:
 
             time.sleep(1)
 
             if time.time() > next_check_threads:
+                next_check_threads += check_threads_every
                 for ctx in self.threads.values():
                     thread = ctx.thread
                     if thread.isAlive():
@@ -198,9 +200,8 @@ class NativePluginsModule(BaseModule):
                         thread.join()
                         del self.threads[thread]
 
-            for _ in range(self.n_threads - len(self.threads)):
-                self.add_new_thread()
-
+                for _ in range(self.n_threads - len(self.threads)):
+                    self.add_new_thread()
 
     def do_stop(self):
         self.interrupted = True  # just to make sure, otherwise we could wait forever on our threads
