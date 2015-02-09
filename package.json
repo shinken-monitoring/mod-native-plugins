@@ -1,0 +1,25 @@
+{
+  "name": "native-plugins",
+  "types": ["module"],
+  "version": "0.1",
+  "homepage": "http://github.com/shinken-monitoring/mod-native-plugins",
+  "author": "Grégory Starck",
+  "description": "Module to execute Python plugins natively (without fork/exec)",
+  "contributors": [
+    {
+      "name": "Grégory Starck",
+      "email": "g.starck@gmail.com"
+    },
+  ],
+  "repository": "https://github.com/shinken-monitoring/mod-native-plugins",
+  "keywords": [
+    "module",
+    "poller",
+    "Python"
+  ],
+  "dependencies": {
+    "shinken": ">2.2",
+    "shinkenplugins": ">=0.3"
+  },
+  "license": "AGPL"
+}
