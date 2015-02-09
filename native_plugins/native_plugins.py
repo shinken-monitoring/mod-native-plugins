@@ -20,8 +20,15 @@ class WorkerThreadCtx(object):
         self.check = None
 
 
-class NativePluginsModule(BaseModule):
+class PluginCtx(object):
+    def __init__(self, mod, base, execute, mod_ts):
+        self.mod = mod
+        self.base = base
+        self.execute = execute
+        self.mod_ts = mod_ts
 
+
+class NativePluginsModule(BaseModule):
 
     def get_worker_threads(self, mod_conf, default=4):
         try:
@@ -42,17 +49,15 @@ class NativePluginsModule(BaseModule):
     def __init__(self, mod_conf):
         super(NativePluginsModule, self).__init__(mod_conf)
         self.plugins = {}
-        # plugins :
         # key == plugin "base" (module name or script path),
-        # value == the plugin execute method/function.
+        # value == PluginCtx instance
 
         self.threads = {}
-        # threads:
         # key == thread.ident
         # value == WorkerThreadCtx instance
         self.n_threads = self.get_worker_threads(mod_conf)
 
-        self.lock = threading.Lock()  # only used to import plugins
+        self.lock = threading.Lock()  # only used to load/import plugins
 
         logger = self.logger = logging.getLogger('shinken.plugins')
         self.set_log_level(mod_conf)
@@ -62,7 +67,7 @@ class NativePluginsModule(BaseModule):
 
     def load_plugin(self, plugin_name):
         self.logger.info('Loading %r ..', plugin_name)
-        if os.path.isfile(plugin_name):
+        if os.path.isfile(plugin_name) and plugin_name.endswith('.py'):
             plugin_dir = os.path.dirname(plugin_name)
             if plugin_dir not in sys.path:
                 sys.path.insert(0, plugin_dir)
@@ -70,50 +75,55 @@ class NativePluginsModule(BaseModule):
         else:  # assume it's a python module name (package.subpackage.module)
             plugin_import = plugin_name
         try:
-            mod = importlib.import_module(plugin_import)
+            plugin_mod = importlib.import_module(plugin_import)
         except ImportError as err:
             self.logger.exception("Could not import %r : %s", plugin_name, err)
             raise
 
-        if (hasattr(mod, 'Plugin')
-            and isinstance(mod.Plugin, type)
-            and issubclass(mod.Plugin, ShinkenPlugin)
+        if (hasattr(plugin_mod, 'Plugin')
+            and isinstance(plugin_mod.Plugin, type)
+            and issubclass(plugin_mod.Plugin, ShinkenPlugin)
         ):
-            class Native(NativePlugin, mod.Plugin):
+            class Native(NativePlugin, plugin_mod.Plugin):
                 pass
             execute = Native().execute
-        elif hasattr(mod, 'main') and callable(mod.main):
-            execute = mod.main
+        elif hasattr(plugin_mod, 'main') and callable(plugin_mod.main):
+            execute = plugin_mod.main
         else:
             raise Exception('Not a usable native plugin: no Plugin class nor main() function')
-        return execute
+
+        return PluginCtx(plugin_mod, plugin_name, execute, os.stat(plugin_mod.__file__).st_mtime)
+
 
     def get_plugin(self, plugin_name):
         '''
         :param plugin_name:
-        :return:    The plugin execute method.
-        :rtype:     callable
+        :return:    The plugin context
+        :rtype:     PluginCtx
         '''
         with self.lock:
-            execute = self.plugins.get(plugin_name, None)
-            if not execute:
-                execute = self.load_plugin(plugin_name)
-                self.plugins[plugin_name] = execute
-        return execute
+            plugin = self.plugins.get(plugin_name, None)
+            if not plugin:
+                plugin = self.load_plugin(plugin_name)
+                self.plugins[plugin_name] = plugin
+        return plugin
 
     def execute_check(self, check):
+        '''
+        :param check:
+        :type check:    shinken.check.Check
+        '''
         check_items = shlex.split(check.command)
         check_base = check_items[0]
         try:
-            plugin_exec = self.get_plugin(check_base)
+            plugin = self.get_plugin(check_base)
             check.check_time = time.time()
-            res = plugin_exec(check_items[1:])
+            res = plugin.execute(check_items[1:])
             self.logger.debug('%s : res=%s', check.command, res)
         except Exception as err:
             check.status = 3
             check.output = '%s: %s' % (check_base, err)
         else:
-            #assert isinstance(res, PluginResult)
             check.exit_status = res.return_code
             check.output = res.output
             check.perf_data = '|'.join(map(str, res.perf_datas))
@@ -163,23 +173,28 @@ class NativePluginsModule(BaseModule):
 
     def real_main(self):
 
+        check_threads_every = 5
+        # make sure to directly create the threads:
+        next_check_threads = time.time() - 2*check_threads_every
+
         while not self.interrupted:
 
             time.sleep(1)
 
-            for ctx in self.threads.values():
-                thread = ctx.thread
-                if thread.isAlive():
-                    pass
-                    # TODO: should we verify that the thread isn't executing a check for too long ?
-                    # but then if yes : what to do if the check is in that case ??
-                    # because even in Python a thread can't necessarily always be safely cancelled..
-                else:
-                    if self.interrupted:
-                        return
-                    self.logger.warning('Thread %s exited ; check=%r', thread, ctx.check)
-                    thread.join()
-                    del self.threads[thread]
+            if time.time() > next_check_threads:
+                for ctx in self.threads.values():
+                    thread = ctx.thread
+                    if thread.isAlive():
+                        pass
+                        # TODO: should we verify that the thread isn't executing a check for too long ?
+                        # but then if yes : what to do if the check is in that case ??
+                        # because even in Python a thread can't necessarily always be safely cancelled..
+                    else:
+                        if self.interrupted:
+                            return
+                        self.logger.warning('Thread %s exited ; check=%r', thread, ctx.check)
+                        thread.join()
+                        del self.threads[thread]
 
             for _ in range(self.n_threads - len(self.threads)):
                 self.add_new_thread()
