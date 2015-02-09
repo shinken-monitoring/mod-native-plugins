@@ -101,11 +101,13 @@ class NativePluginsModule(BaseModule):
         :return:    The plugin context
         :rtype:     PluginCtx
         '''
-        with self.lock:
-            plugin = self.plugins.get(plugin_name, None)
-            if not plugin:
-                plugin = self.load_plugin(plugin_name)
-                self.plugins[plugin_name] = plugin
+        plugin = self.plugins.get(plugin_name, None)
+        if not plugin:
+            with self.lock:
+                plugin = self.plugins.get(plugin_name, None)
+                if not plugin:
+                    plugin = self.load_plugin(plugin_name)
+                    self.plugins[plugin_name] = plugin
         return plugin
 
     def execute_check(self, check):
