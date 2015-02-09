@@ -75,11 +75,20 @@ class NativePluginsModule(BaseModule):
             plugin_import = os.path.basename(plugin_name)
         else:  # assume it's a python module name (package.subpackage.module)
             plugin_import = plugin_name
+
+        before_mods = sys.modules.keys()
         try:
             plugin_mod = importlib.import_module(plugin_import)
         except ImportError as err:
             self.logger.exception("Could not import %r : %s", plugin_name, err)
             raise
+        finally:
+            to_del = []
+            for mod in sys.modules:
+                if mod not in before_mods:
+                    to_del.append(mod)
+            for mod in to_del:
+                del sys.modules[mod]
 
         if (hasattr(plugin_mod, 'Plugin')
             and isinstance(plugin_mod.Plugin, type)
@@ -180,6 +189,9 @@ class NativePluginsModule(BaseModule):
         # make sure to directly create the threads:
         next_check_threads = 0
 
+        check_plugins_timestamps_every = 60
+        next_check_plugins_timestamp = time.time() + check_plugins_timestamps_every
+
         while not self.interrupted:
 
             time.sleep(1)
@@ -204,6 +216,23 @@ class NativePluginsModule(BaseModule):
 
                 for _ in range(self.n_threads - len(self.threads)):
                     self.add_new_thread()
+
+            if time.time() > next_check_plugins_timestamp:
+                next_check_plugins_timestamp += check_plugins_timestamps_every
+                to_reload = []
+                with self.lock:
+                    for name, plugin in self.plugins.items():
+                        new_ts = os.stat(plugin.mod.__file__).st_mtime
+                        if new_ts > plugin.mod_ts:
+                            to_reload.append(name)
+                    for name in to_reload:
+                        del self.plugins[name]
+                        # that will so force us to import it again on next check received.
+                if to_reload:
+                    self.logger.info("Following Plugins have been modified, "
+                                     "I've dropped them from my cache for reload.. plugins=%s",
+                                     to_reload)
+
 
     def do_stop(self):
         self.interrupted = True  # just to make sure, otherwise we could wait forever on our threads
