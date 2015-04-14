@@ -20,5 +20,5 @@ b) declare a main() method, taking a single argument being the list of arguments
 Why use it
 ----------
 
-Any command/plugin, whose load only is relatively high, will benefit from this.
-The plugin is imported once, cached within the module, and re-used for all received Check instances.
+Any command/plugin, whose load/import only is relatively high, will benefit from this.
+The plugin is loaded/imported once, cached within the poller module, and re-used for each received Check instance.
